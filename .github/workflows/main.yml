@@ -1,0 +1,46 @@
+name: Code Signing on Release
+
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  sign-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Download Release Assets
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Azure Sign Tool
+        run: |
+          dotnet tool install --global AzureSignTool
+
+      - name: Sign Executable
+        run: |
+          $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
+          AzureSignTool sign `
+            -kvu $env:AZURE_KEY_VAULT_URL `
+            -kvi $env:AZURE_CLIENT_ID `
+            -kvs $env:AZURE_CLIENT_SECRET `
+            -kvt $env:AZURE_TENANT_ID `
+            -tr http://timestamp.digicert.com `
+            -v path\to\downloaded\executable.exe
+        env:
+          AZURE_KEY_VAULT_URL: ${{ secrets.AZURE_KEY_VAULT_URL }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Upload Signed Executable
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: path\to\downloaded\executable.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
