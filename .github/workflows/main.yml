@@ -17,30 +17,39 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Azure Sign Tool
+      - name: List Downloaded Files
         run: |
-          dotnet tool install --global AzureSignTool
+          echo "Downloaded files:"
+          ls -l
+
+      - name: Install Azure Sign Tool
+        run: dotnet tool install --global AzureSignTool
 
       - name: Sign Executable
         run: |
           $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
+          $executable = Get-ChildItem -Filter '*.exe' | Select-Object -First 1
+          if ($null -eq $executable) {
+            Write-Error "No executable found to sign."
+            exit 1
+          }
           AzureSignTool sign `
-            -kvu $env:AZURE_KEY_VAULT_URL `
             -kvi $env:AZURE_CLIENT_ID `
             -kvs $env:AZURE_CLIENT_SECRET `
             -kvt $env:AZURE_TENANT_ID `
+            -kvc $env:AZURE_CODE_SIGNING_NAME `
             -tr http://timestamp.digicert.com `
-            -v path\to\downloaded\executable.exe
+            -v $executable.FullName
         env:
-          AZURE_KEY_VAULT_URL: ${{ secrets.AZURE_KEY_VAULT_URL }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CODE_SIGNING_NAME: ${{ secrets.AZURE_CODE_SIGNING_NAME }}
 
       - name: Upload Signed Executable
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.event.release.tag_name }}
-          files: path\to\downloaded\executable.exe
+          files: ${{ steps.sign-windows.outputs.signed_executable }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
