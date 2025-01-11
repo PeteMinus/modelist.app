@@ -1,32 +1,48 @@
+name: Upload, Sign, and Download File
+
 on:
-  push:
-    branches: [main]
+  workflow_dispatch: # Allows manual triggering of the workflow
 
 jobs:
-  build-and-sign:
+  sign-file:
     runs-on: windows-latest
-    name: Build app and sign files with Trusted Signing
     steps:
-      - name: Checkout
+      # Step 1: Check out the repository (optional)
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: dotnet restore App
+      # Step 2: Upload file for signing
+      - name: Upload file for signing
+        uses: actions/upload-artifact@v3
+        with:
+          name: unsigned-file
+          path: your-local-file-path.exe
 
-      - name: Build
-        run: dotnet build --configuration Release --no-restore WpfApp
+      # Step 3: Run the signing process
+      - name: Download unsigned file
+        uses: actions/download-artifact@v3
+        with:
+          name: unsigned-file
+          path: ./unsigned.exe
 
-      - name: Sign files with Trusted Signing
+      - name: Sign the file using Azure Trusted Signing
         uses: azure/trusted-signing-action@v0.5.1
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
           azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-          endpoint: https://eus.codesigning.azure.net/
-          trusted-signing-account-name: vscx-codesigning
-          certificate-profile-name: vscx-certificate-profile
-          files-folder: ${{ github.workspace }}\App\App\bin\Release\net8.0-windows
-          files-folder-filter: exe,dll
+          endpoint: https://your-azure-signing-endpoint/
+          trusted-signing-account-name: your-account-name
+          certificate-profile-name: your-certificate-profile
+          files-folder: ./
+          files-folder-filter: exe
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
+
+      # Step 4: Upload the signed file
+      - name: Upload signed file
+        uses: actions/upload-artifact@v3
+        with:
+          name: signed-file
+          path: ./unsigned.exe # This should now be the signed file
