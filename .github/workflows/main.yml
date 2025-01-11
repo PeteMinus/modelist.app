@@ -1,55 +1,32 @@
-name: Code Signing on Release
-
 on:
-  release:
-    types:
-      - published
+  push:
+    branches: [main]
 
 jobs:
-  sign-windows:
+  build-and-sign:
     runs-on: windows-latest
-
+    name: Build app and sign files with Trusted Signing
     steps:
-      - name: Download Release Assets
-        uses: softprops/action-gh-release@v1
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: dotnet restore App
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore WpfApp
+
+      - name: Sign files with Trusted Signing
+        uses: azure/trusted-signing-action@v0.5.1
         with:
-          tag_name: ${{ github.event.release.tag_name }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: List Downloaded Files
-        run: |
-          echo "Downloaded files:"
-          ls -l
-
-      - name: Install Azure Sign Tool
-        run: dotnet tool install --global AzureSignTool
-
-      - name: Sign Executable
-        run: |
-          $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
-          $executable = Get-ChildItem -Filter '*.exe' | Select-Object -First 1
-          if ($null -eq $executable) {
-            Write-Error "No executable found to sign."
-            exit 1
-          }
-          AzureSignTool sign `
-            -kvi $env:AZURE_CLIENT_ID `
-            -kvs $env:AZURE_CLIENT_SECRET `
-            -kvt $env:AZURE_TENANT_ID `
-            -kvc $env:AZURE_CODE_SIGNING_NAME `
-            -tr http://timestamp.digicert.com `
-            -v $executable.FullName
-        env:
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CODE_SIGNING_NAME: ${{ secrets.AZURE_CODE_SIGNING_NAME }}
-
-      - name: Upload Signed Executable
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.event.release.tag_name }}
-          files: ${{ steps.sign-windows.outputs.signed_executable }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: https://eus.codesigning.azure.net/
+          trusted-signing-account-name: vscx-codesigning
+          certificate-profile-name: vscx-certificate-profile
+          files-folder: ${{ github.workspace }}\App\App\bin\Release\net8.0-windows
+          files-folder-filter: exe,dll
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
