@@ -1,0 +1,60 @@
+name: Track GitHub Release Downloads
+
+on:
+  schedule:
+    - cron: "0 */12 * * *"  # Runs every 12 hours
+  workflow_dispatch:  # Allows manual trigger from Actions tab
+
+jobs:
+  track-downloads:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Get GitHub Release Downloads
+        run: |
+          GITHUB_API="https://api.github.com/repos/PeteMinus/modelist.app/releases"
+          GA_ENDPOINT="https://www.google-analytics.com/mp/collect"
+          
+          MEASUREMENT_ID="${{ secrets.GA_MEASUREMENT_ID }}"
+          API_SECRET="${{ secrets.GA_API_SECRET }}"
+          CLIENT_ID="modelist-tracker"  # Fixed client ID for tracking
+
+          # Get download count from GitHub API
+          response=$(curl -s "$GITHUB_API")
+          
+          # Loop through assets and track downloads per file
+          echo "$response" | jq -c '.[] | .assets[] | {name: .name, downloads: .download_count}' | while read asset; do
+              filename=$(echo "$asset" | jq -r '.name')
+              downloads=$(echo "$asset" | jq -r '.downloads')
+
+              # Detect platform based on filename
+              if [[ "$filename" == *".dmg"* ]]; then
+                platform="macOS"
+              elif [[ "$filename" == *".exe"* ]]; then
+                platform="Windows"
+              elif [[ "$filename" == *".AppImage"* || "$filename" == *".tar.gz"* ]]; then
+                platform="Linux"
+              else
+                platform="Other"
+              fi
+
+              # Send download count to Google Analytics per platform
+              curl -X POST "$GA_ENDPOINT?measurement_id=$MEASUREMENT_ID&api_secret=$API_SECRET" \
+                  -H "Content-Type: application/json" \
+                  -d '{
+                    "client_id": "'$CLIENT_ID'",
+                    "events": [{
+                      "name": "github_download",
+                      "params": {
+                        "platform": "'$platform'",
+                        "filename": "'$filename'",
+                        "download_count": '$downloads'
+                      }
+                    }]
+                  }'
+
+              echo "Sent $downloads downloads for $filename ($platform) to Google Analytics."
+          done
